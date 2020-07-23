@@ -1,0 +1,116 @@
+---
+title: "Status"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(lubridate)
+
+source_directory <- c("C:/Users/dzhang/Downloads")
+target_directory <- c("U:/dzhang/proj-covid-usage")
+
+string_date <- strftime(Sys.Date(),format="%Y.%m.%d")
+source_files <- list.files(source_directory, 
+                           "(35364_.+|Outdated Inventory - Group By Device|All Station Event Report - Sort by Station)(.zip|.csv)$")
+
+source_files <- sort(source_files)
+
+target_files <- c(paste("pharmogistics-OD-",string_date,".zip",sep=""),
+                  paste("activity-",string_date,".csv",sep=""),
+                  paste("outdate-",string_date,".csv",sep="")
+                  )
+
+file.copy(file.path(source_directory,source_files),target_directory)
+tryCatch(file.rename(source_files,target_files),
+         error = function(e){
+           message("No file to rename?\n", e)
+         },
+         warning = function(w){
+           message("A warning occured:\n", w)
+         })
+file.remove(file.path(source_directory,source_files))
+
+# ------- activity and pharmogistics report not utilized at this time...
+
+myfile = paste("outdate-",strftime(Sys.Date(),format="%Y.%m.%d"),".csv",sep="")
+raw_df <- read_csv(myfile,col_types=cols(.default="c"))
+
+processed_df <- raw_df %>% 
+  mutate(ExpiresInDays = as.numeric(ExpiresInDays)) %>%
+  mutate(ExpirationDate = mdy(ExpirationDate)) %>%
+  select(Device,MedDescription,MedID,ExpirationDate,ExpiresInDays)
+
+glimpse(processed_df)
+  
+by_time <- processed_df %>%
+  mutate(grouping = cut(ExpiresInDays,breaks=c(-1,0,7,14,30),labels=c("TODAY!!!","1 Week","2 Weeks","4 Weeks"))) %>%
+  mutate(grouping = as.factor(grouping)) %>%
+  group_by(grouping) %>%
+  summarize(num_expiring = n())
+
+plot_by_time <- ggplot(by_time,aes(grouping,num_expiring)) + 
+  geom_bar(stat="identity") +
+  scale_y_continuous(limits = c(0, max(by_time$num_expiring)), breaks = seq(0, max(by_time$num_expiring), by = 50)) +
+  ggtitle(paste("# of Pyxis items expiring within 30 days and when \n as of ", as.character(Sys.Date()))) +
+  labs(x = "Number of days left",y = "Number of items expiring") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+by_device <- processed_df %>%
+  mutate(Device = as.factor(Device)) %>%
+  filter(ExpiresInDays <= 7) %>%
+  group_by(Device) %>%
+  summarize(num_expiring = n(), earliest_exp = min(ExpirationDate)) %>%
+  mutate(expiring = case_when(earliest_exp < Sys.Date() ~ 'Expired',
+                              earliest_exp == Sys.Date() ~ 'Expiring',
+                              TRUE ~ 'Not expired')) %>%
+  arrange(desc(num_expiring))
+
+plot_by_device <- ggplot(by_device,aes(reorder(Device,-num_expiring),num_expiring)) + 
+  geom_bar(aes(fill = expiring), stat="identity") +
+  scale_fill_manual("Expiring Today!", values = c("Expired" = "orange", "Expiring" = "firebrick", "Not expired" =  "lightblue")) +
+  geom_text(aes(label = earliest_exp),hjust=-0.2)+
+  coord_flip() + 
+  scale_y_continuous(limits = c(0, max(by_device$num_expiring+5)), breaks = seq(0, max(by_device$num_expiring), by = 1)) +
+  ggtitle(paste("# of Pyxis expiring items per device within 7 days \n as of ", as.character(Sys.Date()))) +
+  labs(x = "Device",y = "Number of items expiring (red expiring today, orange EXPIRED!!)") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.minor.x = element_blank(),
+        legend.position = "none")
+
+
+
+```
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+# column with institution specific static text information
+
+
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Items Expiring in next 30 days
+
+```{r}
+plot_by_time
+```
+
+### Items Expiring by Location
+
+```{r}
+plot_by_device
+```
+
+
+
