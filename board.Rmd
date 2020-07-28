@@ -11,8 +11,8 @@ library(flexdashboard)
 library(tidyverse)
 library(lubridate)
 
-source_directory <- c("C:/Users/dzhang/Downloads")
-target_directory <- c("U:/dzhang/proj-covid-usage")
+source_directory <- # vector of source directory
+target_directory <- # vector of target directory
 
 string_date <- strftime(Sys.Date(),format="%Y.%m.%d")
 source_files <- list.files(source_directory, 
@@ -60,7 +60,6 @@ plot_by_time <- ggplot(by_time,aes(grouping,num_expiring)) +
   labs(x = "Number of days left",y = "Number of items expiring") +
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5))
-
 
 
 by_device <- processed_df %>%
